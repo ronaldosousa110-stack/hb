@@ -1,5 +1,7 @@
 import os
 import zipfile
+import subprocess
+import shutil
 from io import BytesIO
 import pandas as pd
 import streamlit as st
@@ -22,7 +24,6 @@ def tela_login():
     
     if st.button("Entrar", type="primary"):
         try:
-            # Puxa o utilizador e senha configurados nos Secrets do site
             usuario_correto = st.secrets["credenciais"]["usuario"]
             senha_correta = st.secrets["credenciais"]["senha"]
             
@@ -36,7 +37,7 @@ def tela_login():
             st.error("Erro técnico: As credenciais ainda não foram configuradas nos 'Secrets' do Streamlit Cloud.")
 
 # ==========================================================
-# SEU DICIONÁRIO DE MODELOS
+# DICIONÁRIO DE MODELOS
 # ==========================================================
 MODELOS = {
     "NR-01 Integração": "modelo_certificadoNR01.docx",
@@ -79,16 +80,11 @@ def processar_substituicao(paragrafo, todas_tags, dados_com_negrito):
             paragrafo.add_run(texto_completo)
             break
 
-# ==========================================================
-# CONTROLO DE TELAS (LOGIN VS PAINEL)
-# ==========================================================
-
 # SE NÃO ESTIVER CONECTADO: Mostra apenas o Login E a Planilha Modelo embaixo
 if not st.session_state["conectado"]:
     tela_login()
     st.write("---")
     
-    # Botão da planilha disponível logo na tela inicial
     caminho_planilha_modelo = os.path.join("static", "modelo_dados.xlsx")
     if os.path.exists(caminho_planilha_modelo):
         with open(caminho_planilha_modelo, "rb") as f:
@@ -98,15 +94,12 @@ if not st.session_state["conectado"]:
                 file_name="modelo_dados.xlsx",
                 mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
             )
-    else:
-        st.warning("Aviso: O ficheiro 'modelo_dados.xlsx' não foi encontrado na pasta 'static'. Certifique-se de que fez o upload dele no GitHub.")
-    
-    st.stop() # Bloqueia o restante do painel para quem não está logado
+    st.stop()
 
 # ==========================================================
-# PAINEL PRINCIPAL (SÓ APARECE APÓS LOGIN CORRETO)
+# PAINEL PRINCIPAL
 # ==========================================================
-st.title("🎓 Gerador Web de Certificados NR")
+st.title("🎓 Gerador Web de Certificados NR (PDF)")
 
 if st.sidebar.button("Sair / Logout"):
     st.session_state["conectado"] = False
@@ -118,7 +111,7 @@ nr_escolhida = st.selectbox("1. Selecione o Treinamento (NR):", ["Clique para es
 arquivo_excel = st.file_uploader("2. Envie a planilha de dados preenchida (.xlsx):", type=["xlsx", "xls"])
 
 if nr_escolhida != "Clique para escolher..." and arquivo_excel is not None:
-    if st.button("Processar e Gerar Certificados", type="primary"):
+    if st.button("Processar e Gerar Certificados em PDF", type="primary"):
         try:
             df = pd.read_excel(arquivo_excel)
             caminho_modelo = os.path.join('modelos_docx', MODELOS[nr_escolhida])
@@ -129,6 +122,10 @@ if nr_escolhida != "Clique para escolher..." and arquivo_excel is not None:
                 memoria_zip = BytesIO()
                 barra_progresso = st.progress(0)
                 total_linhas = len(df)
+                
+                # Criamos pastas temporárias no servidor para fazer a conversão
+                pasta_temp = "temp_certificados"
+                os.makedirs(pasta_temp, exist_ok=True)
                 
                 with zipfile.ZipFile(memoria_zip, 'a', zipfile.ZIP_DEFLATED) as zip_file:
                     for idx, linha in df.iterrows():
@@ -154,28 +151,50 @@ if nr_escolhida != "Clique para escolher..." and arquivo_excel is not None:
                                         processar_substituicao(p, todas_tags, dados_com_negrito)
                                         
                         nome_limpo = str(linha["Nome"]).strip().replace(" ", "_")
-                        nome_final_arquivo = f"{nr_escolhida.replace(' ', '_')}_{nome_limpo}.docx"
+                        nr_nome = nr_escolhida.replace(' ', '_')
                         
-                        memoria_doc = BytesIO()
-                        doc.save(memoria_doc)
-                        memoria_doc.seek(0)
-                        zip_file.writestr(nome_final_arquivo, memoria_doc.getvalue())
+                        # Nomes dos arquivos temporários
+                        nome_docx = os.path.join(pasta_temp, f"{nr_nome}_{nome_limpo}.docx")
+                        nome_pdf = os.path.join(pasta_temp, f"{nr_nome}_{nome_limpo}.pdf")
+                        
+                        # 1. Salva o Word temporariamente
+                        doc.save(nome_docx)
+                        
+                        # 2. Comando para o LibreOffice converter de Word para PDF silenciosamente
+                        # Esse comando funciona de forma nativa no Linux do Streamlit Cloud
+                        subprocess.run([
+                            'soffice', 
+                            '--headless', 
+                            '--convert-to', 'pdf', 
+                            '--outdir', pasta_temp, 
+                            nome_docx
+                        ], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+                        
+                        # 3. Adiciona o PDF gerado dentro do arquivo ZIP final se ele existir
+                        if os.path.exists(nome_pdf):
+                            zip_file.write(nome_pdf, os.path.basename(nome_pdf))
+                        else:
+                            # Caso o LibreOffice falhe (ex: rodando local no Windows sem ele instalado), salva o DOCX como plano B
+                            zip_file.write(nome_docx, os.path.basename(nome_docx))
+                        
                         barra_progresso.progress((idx + 1) / total_linhas)
                 
+                # Limpa a pasta temporária do servidor após terminar
+                shutil.rmtree(pasta_temp, ignore_errors=True)
+                
                 memoria_zip.seek(0)
-                st.success("✨ Todos os certificados foram gerados!")
+                st.success("✨ Todos os certificados foram convertidos e gerados em PDF!")
                 
                 st.download_button(
-                    label="📥 Descarregar Todos os Certificados (.ZIP)",
+                    label="📥 Descarregar Todos os Certificados em PDF (.ZIP)",
                     data=memoria_zip,
-                    file_name=f"Certificados_{nr_escolhida.replace(' ', '_')}.zip",
+                    file_name=f"Certificados_PDF_{nr_escolhida.replace(' ', '_')}.zip",
                     mime="application/zip"
                 )
         except Exception as e:
             st.error(f"Ocorreu um erro ao ler a planilha: {e}")
 
 st.write("---")
-# Mostra também o modelo dentro do painel logado para garantir dupla disponibilidade
 caminho_planilha_modelo = os.path.join("static", "modelo_dados.xlsx")
 if os.path.exists(caminho_planilha_modelo):
     with open(caminho_planilha_modelo, "rb") as f:
