@@ -169,7 +169,7 @@ if nr_escolhida != "Clique para escolher..." and arquivo_excel is not None:
                     label="📥 Descarregar Todos os Certificados (.ZIP)",
                     data=memoria_zip,
                     file_name=f"Certificados_{nr_escolhida.replace(' ', '_')}.zip",
-                    mimetype="application/zip"
+                    mime="application/zip"
                 )
         except Exception as e:
             st.error(f"Ocorreu um erro ao ler a planilha: {e}")
