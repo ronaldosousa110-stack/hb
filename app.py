@@ -5,11 +5,15 @@ import pandas as pd
 import streamlit as st
 from docx import Document
 
-# Configuração da página do Streamlit
+# 1. Configura o visual da página do site
 st.set_page_config(page_title="Gerador de Certificados NR", page_icon="🎓", layout="centered")
 
+# Cria as caixas de memória do Streamlit se elas não existirem
+if "conectado" not in st.session_state:
+    st.session_state["conectado"] = False
+
 # ==========================================================
-# CONFIGURAÇÃO DE LOGIN SIMPLES
+# SISTEMA DE LOGIN CORRIGIDO
 # ==========================================================
 def tela_login():
     st.subheader("🔒 Acesso Restrito")
@@ -17,28 +21,28 @@ def tela_login():
     senha = st.text_input("Senha", type="password", key="pass_input")
     
     if st.button("Entrar", type="primary"):
-        # Agora o código valida os dados lendo os "Secrets" do servidor do Streamlit
         try:
+            # Puxa o utilizador e senha que você configurou nos Secrets do site
             usuario_correto = st.secrets["credenciais"]["usuario"]
             senha_correta = st.secrets["credenciais"]["senha"]
             
             if usuario == usuario_correto and senha == senha_correta:
                 st.session_state["conectado"] = True
-                st.rerun()
+                st.success("Acesso concedido! A carregar...")
+                st.rerun() # Força o site a atualizar e carregar o painel
             else:
                 st.error("Utilizador ou senha incorretos.")
         except KeyError:
-            # Caso se esqueça de configurar no site, este aviso aparece
-            st.error("Erro técnico: As credenciais de acesso ainda não foram configuradas no painel do Streamlit.")
+            st.error("Erro técnico: As credenciais ainda não foram configuradas nos 'Secrets' do Streamlit Cloud.")
 
-# Inicializa o estado de login
-if "logado" not in st.session_state:
-    st.session_state["logado"] = False
-
-if not st.session_state["logado"]:
+# Se NÃO estiver conectado, mostra a tela de login e trava o resto do código
+if not st.session_state["conectado"]:
     tela_login()
-    st.stop()
+    st.stop() 
 
+# ==========================================================
+# DAQUI PARA BAIXO SEGUE O RESTO DO SEU CÓDIGO NORMAL...
+# ==========================================================
 # ==========================================================
 # SEU DICIONÁRIO DE MODELOS
 # ==========================================================
