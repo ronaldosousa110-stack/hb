@@ -55,46 +55,12 @@ MODELOS = {
 }
 
 # Lógica de substituição de texto original
-def processar_substituicao(paragrafo, todas_tags, dados_com_negrito):
-    if not any(tag in paragrafo.text for tag in todas_tags):
-        return
-    texto_completo = paragrafo.text
-    paragrafo.text = ""
-    while True:
-        proxima_tag = None
-        menor_posicao = len(texto_completo)
-        for tag in todas_tags:
-            posicao = texto_completo.find(tag)
-            if posicao != -1 and posicao < menor_posicao:
-                menor_posicao = posicao
-                proxima_tag = tag
-        if proxima_tag:
-            texto_antes = texto_completo[:menor_posicao]
-            run_antes = paragrafo.add_run(texto_antes)
-            valor_real = todas_tags[proxima_tag]
-            run_dados = paragrafo.add_run(valor_real)
-            if proxima_tag in dados_com_negrito:
-                run_dados.bold = True
-            texto_completo = texto_completo[menor_posicao + len(proxima_tag):]
-        else:
-            paragrafo.add_run(texto_completo)
-            break
-
-# SE NÃO ESTIVER CONECTADO: Mostra apenas o Login E a Planilha Modelo embaixo
-if not st.session_state["conectado"]:
-    tela_login()
-    st.write("---")
-    
-    caminho_planilha_modelo = os.path.join("static", "modelo_dados.xlsx")
-    if os.path.exists(caminho_planilha_modelo):
-        with open(caminho_planilha_modelo, "rb") as f:
-            st.download_button(
-                label="ℹ️ Descarregar Planilha Modelo de Inserção",
-                data=f,
-                file_name="modelo_dados.xlsx",
-                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-            )
-    st.stop()
+def processar_substituicao(paragrafo, todas_tags):
+    for tag, valor in todas_tags.items():
+        if tag in paragrafo.text:
+            for run in paragrafo.runs:
+                if tag in run.text:
+                    run.text = run.text.replace(tag, valor)
 
 # ==========================================================
 # PAINEL PRINCIPAL
@@ -143,12 +109,12 @@ if nr_escolhida != "Clique para escolher..." and arquivo_excel is not None:
                         todas_tags = {**dados_com_negrito, **dados_sem_negrito}
                         
                         for p in doc.paragraphs:
-                            processar_substituicao(p, todas_tags, dados_com_negrito)
+                            processar_substituicao(p, todas_tags)
                         for t in doc.tables:
                             for row in t.rows:
                                 for cell in row.cells:
                                     for p in cell.paragraphs:
-                                        processar_substituicao(p, todas_tags, dados_com_negrito)
+                                        processar_substituicao(p, todas_tags)
                                         
                         nome_limpo = str(linha["Nome"]).strip().replace(" ", "_")
                         nr_nome = nr_escolhida.replace(' ', '_')
