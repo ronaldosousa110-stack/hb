@@ -104,14 +104,20 @@ if nr_escolhida != "Clique para escolher..." and arquivo_excel is not None:
                 with zipfile.ZipFile(memoria_zip, 'a', zipfile.ZIP_DEFLATED) as zip_file:
                     for idx, linha in df.iterrows():
                         doc = Document(caminho_modelo)
+                        # Formatação de data ultra segura e resistente a erros
+                        data_formatada = ""
                         if pd.notna(linha.get("Data_Final")):
-                            dt = pd.to_datetime(linha["Data_Final"])
-                            dia = dt.day
-                            ano = dt.year
-                            mes_nome = MESES_PT.get(dt.month, "")
-                            data_formatada = f"{dia} de {mes_nome} de {ano}"
-                        else:
-                            data_formatada = ""
+                            try:
+                                # Força o Pandas a ler exatamente o formato ANO-MÊS-DIA (YYYY-MM-DD)
+                                dt = pd.to_datetime(linha["Data_Final"], format='%Y-%m-%d', errors='coerce')
+                                if pd.notna(dt):
+                                    dia = dt.day
+                                    ano = dt.year
+                                    mes_nome = MESES_PT.get(dt.month, "")
+                                    data_formatada = f"{dia} de {mes_nome} de {ano}"
+                            except Exception:
+                                # Se mesmo assim falhar ou for um formato inesperado, tenta ler como texto puro
+                                data_formatada = str(linha["Data_Final"]).strip()
                         
                         dados_com_negrito = {
                             "[NOME]": str(linha["Nome"]) if pd.notna(linha.get("Nome")) else "",
