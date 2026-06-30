@@ -36,7 +36,7 @@ if "logado" not in st.session_state:
     st.session_state["logado"] = False
 
 if not st.session_state["logado"]:
-    login()
+    tela_login()
     st.stop()
 
 # ==========================================================
