@@ -13,7 +13,7 @@ if "conectado" not in st.session_state:
     st.session_state["conectado"] = False
 
 # ==========================================================
-# SISTEMA DE LOGIN CORRIGIDO
+# SISTEMA DE LOGIN
 # ==========================================================
 def tela_login():
     st.subheader("🔒 Acesso Restrito")
@@ -22,27 +22,19 @@ def tela_login():
     
     if st.button("Entrar", type="primary"):
         try:
-            # Puxa o utilizador e senha que você configurou nos Secrets do site
+            # Puxa o utilizador e senha configurados nos Secrets do site
             usuario_correto = st.secrets["credenciais"]["usuario"]
             senha_correta = st.secrets["credenciais"]["senha"]
             
             if usuario == usuario_correto and senha == senha_correta:
                 st.session_state["conectado"] = True
                 st.success("Acesso concedido! A carregar...")
-                st.rerun() # Força o site a atualizar e carregar o painel
+                st.rerun() 
             else:
                 st.error("Utilizador ou senha incorretos.")
         except KeyError:
             st.error("Erro técnico: As credenciais ainda não foram configuradas nos 'Secrets' do Streamlit Cloud.")
 
-# Se NÃO estiver conectado, mostra a tela de login e trava o resto do código
-if not st.session_state["conectado"]:
-    tela_login()
-    st.stop() 
-
-# ==========================================================
-# DAQUI PARA BAIXO SEGUE O RESTO DO SEU CÓDIGO NORMAL...
-# ==========================================================
 # ==========================================================
 # SEU DICIONÁRIO DE MODELOS
 # ==========================================================
@@ -61,7 +53,7 @@ MODELOS = {
     "NR-35 Trabalho em Altura": "modelo_certificadoNR35.docx"
 }
 
-# Lógica de substituição de texto idêntica à sua original
+# Lógica de substituição de texto original
 def processar_substituicao(paragrafo, todas_tags, dados_com_negrito):
     if not any(tag in paragrafo.text for tag in todas_tags):
         return
@@ -88,43 +80,59 @@ def processar_substituicao(paragrafo, todas_tags, dados_com_negrito):
             break
 
 # ==========================================================
-# INTERFACE DO PAINEL PRINCIPAL
+# CONTROLO DE TELAS (LOGIN VS PAINEL)
+# ==========================================================
+
+# SE NÃO ESTIVER CONECTADO: Mostra apenas o Login E a Planilha Modelo embaixo
+if not st.session_state["conectado"]:
+    tela_login()
+    st.write("---")
+    
+    # Botão da planilha disponível logo na tela inicial
+    caminho_planilha_modelo = os.path.join("static", "modelo_dados.xlsx")
+    if os.path.exists(caminho_planilha_modelo):
+        with open(caminho_planilha_modelo, "rb") as f:
+            st.download_button(
+                label="ℹ️ Descarregar Planilha Modelo de Inserção",
+                data=f,
+                file_name="modelo_dados.xlsx",
+                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+            )
+    else:
+        st.warning("Aviso: O ficheiro 'modelo_dados.xlsx' não foi encontrado na pasta 'static'. Certifique-se de que fez o upload dele no GitHub.")
+    
+    st.stop() # Bloqueia o restante do painel para quem não está logado
+
+# ==========================================================
+# PAINEL PRINCIPAL (SÓ APARECE APÓS LOGIN CORRETO)
 # ==========================================================
 st.title("🎓 Gerador Web de Certificados NR")
 
-# Botão de Logout no topo
 if st.sidebar.button("Sair / Logout"):
-    st.session_state["logado"] = False
+    st.session_state["conectado"] = False
     st.rerun()
 
 st.write("---")
 
-# 1. Seleção da NR
 nr_escolhida = st.selectbox("1. Selecione o Treinamento (NR):", ["Clique para escolher..."] + list(MODELOS.keys()))
-
-# 2. Upload do arquivo
-arquivo_excel = st.file_uploader("2. Envie a planilha de dados (.xlsx):", type=["xlsx", "xls"])
+arquivo_excel = st.file_uploader("2. Envie a planilha de dados preenchida (.xlsx):", type=["xlsx", "xls"])
 
 if nr_escolhida != "Clique para escolher..." and arquivo_excel is not None:
-    
     if st.button("Processar e Gerar Certificados", type="primary"):
         try:
             df = pd.read_excel(arquivo_excel)
             caminho_modelo = os.path.join('modelos_docx', MODELOS[nr_escolhida])
             
             if not os.path.exists(caminho_modelo):
-                st.error(f"Arquivo de modelo {MODELOS[nr_escolhida]} não foi encontrado na pasta 'modelos_docx'.")
+                st.error(f"Erro: O modelo '{MODELOS[nr_escolhida]}' não foi encontrado na pasta 'modelos_docx'.")
             else:
-                # Criar arquivo ZIP na memória
                 memoria_zip = BytesIO()
-                
                 barra_progresso = st.progress(0)
                 total_linhas = len(df)
                 
                 with zipfile.ZipFile(memoria_zip, 'a', zipfile.ZIP_DEFLATED) as zip_file:
                     for idx, linha in df.iterrows():
                         doc = Document(caminho_modelo)
-                        
                         data_formatada = pd.to_datetime(linha["Data_Final"]).strftime('%d/%m/%Y') if pd.notna(linha.get("Data_Final")) else ""
                         
                         dados_com_negrito = {
@@ -137,7 +145,6 @@ if nr_escolhida != "Clique para escolher..." and arquivo_excel is not None:
                         dados_sem_negrito = {"[DATA_FINAL]": data_formatada}
                         todas_tags = {**dados_com_negrito, **dados_sem_negrito}
                         
-                        # Substituição
                         for p in doc.paragraphs:
                             processar_substituicao(p, todas_tags, dados_com_negrito)
                         for t in doc.tables:
@@ -153,33 +160,29 @@ if nr_escolhida != "Clique para escolher..." and arquivo_excel is not None:
                         doc.save(memoria_doc)
                         memoria_doc.seek(0)
                         zip_file.writestr(nome_final_arquivo, memoria_doc.getvalue())
-                        
-                        # Atualiza barra de progresso
                         barra_progresso.progress((idx + 1) / total_linhas)
                 
                 memoria_zip.seek(0)
+                st.success("✨ Todos os certificados foram gerados!")
                 
-                st.success("✨ Certificados gerados com sucesso!")
-                
-                # Botão para baixar o ZIP gerado
                 st.download_button(
-                    label="📥 Baixar Certificados (.ZIP)",
+                    label="📥 Descarregar Todos os Certificados (.ZIP)",
                     data=memoria_zip,
                     file_name=f"Certificados_{nr_escolhida.replace(' ', '_')}.zip",
                     mimetype="application/zip"
                 )
-                
         except Exception as e:
-            st.error(f"Erro ao processar: {e}")
+            st.error(f"Ocorreu um erro ao ler a planilha: {e}")
 
 st.write("---")
-# Botão para o usuário baixar a planilha modelo
+# Mostra também o modelo dentro do painel logado para garantir dupla disponibilidade
 caminho_planilha_modelo = os.path.join("static", "modelo_dados.xlsx")
 if os.path.exists(caminho_planilha_modelo):
     with open(caminho_planilha_modelo, "rb") as f:
         st.download_button(
-            label="ℹ️ Baixar Planilha Modelo de Dados",
+            label="ℹ️ Descarregar Planilha Modelo de Inserção",
             data=f,
             file_name="modelo_dados.xlsx",
-            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            key="modelo_logado"
         )
