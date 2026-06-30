@@ -128,10 +128,14 @@ if nr_escolhida != "Clique para escolher..." and arquivo_excel is not None:
                         
                         # 2. Comando para o LibreOffice converter de Word para PDF silenciosamente
                         # Esse comando funciona de forma nativa no Linux do Streamlit Cloud
+                        # Comando otimizado para o LibreOffice forçar a fidelidade do layout original
                         subprocess.run([
-                            'soffice', 
-                            '--headless', 
-                            '--convert-to', 'pdf', 
+                            'soffice',
+                            '--headless',
+                            '--invisible',
+                            '--nodefault',
+                            '--nofirststartwizard',
+                            '--convert-to', 'pdf:writer_pdf_Export', 
                             '--outdir', pasta_temp, 
                             nome_docx
                         ], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
