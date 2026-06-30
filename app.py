@@ -5,6 +5,14 @@ import shutil
 from io import BytesIO
 import pandas as pd
 import streamlit as st
+
+MESES_PT = {
+    1: "Janeiro", 2: "Fevereiro", 3: "Março", 4: "Abril",
+    5: "Maio", 6: "Junho", 7: "Julho", 8: "Agosto",
+    9: "Setembro", 10: "Outubro", 11: "Novembro", 12: "Dezembro"
+}
+
+
 from docx import Document
 
 # 1. Configura o visual da página do site
@@ -96,7 +104,14 @@ if nr_escolhida != "Clique para escolher..." and arquivo_excel is not None:
                 with zipfile.ZipFile(memoria_zip, 'a', zipfile.ZIP_DEFLATED) as zip_file:
                     for idx, linha in df.iterrows():
                         doc = Document(caminho_modelo)
-                        data_formatada = pd.to_datetime(linha["Data_Final"]).strftime('%d/%m/%Y') if pd.notna(linha.get("Data_Final")) else ""
+                        if pd.notna(linha.get("Data_Final")):
+                            dt = pd.to_datetime(linha["Data_Final"])
+                            dia = dt.day
+                            ano = dt.year
+                            mes_nome = MESES_PT.get(dt.month, "")
+                            data_formatada = f"{dia} de {mes_nome} de {ano}"
+                        else:
+                            data_formatada = ""
                         
                         dados_com_negrito = {
                             "[NOME]": str(linha["Nome"]) if pd.notna(linha.get("Nome")) else "",
