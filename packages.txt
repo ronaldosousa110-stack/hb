@@ -1,2 +1,2 @@
 libreoffice
-ttf-mscorefonts-installer
+fonts-liberation
