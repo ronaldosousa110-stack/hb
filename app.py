@@ -54,47 +54,18 @@ MODELOS = {
     "NR-35 Trabalho em Altura": "modelo_certificadoNR35.docx"
 }
 
-# Lógica avançada para isolar a tag e aplicar NEGRITO APENAS no valor inserido
+# Lógica pura para juntar pedaços quebrados de tags pelo Word e substituir mantendo a formatação original do arquivo
 def processar_substituicao(doc, todas_tags):
     def substituir_no_elemento(elemento):
         for paragrafo in elemento.paragraphs:
             for tag, valor in todas_tags.items():
                 if tag in paragrafo.text:
-                    # TRUQUE DE ISOLAMENTO: Junta os pedaços e reconstrói o parágrafo se achar a tag
                     for i in range(len(paragrafo.runs)):
                         for j in range(i + 1, len(paragrafo.runs) + 1):
                             texto_combinado = "".join([r.text for r in paragrafo.runs[i:j]])
                             if tag in texto_combinado:
-                                # Encontra a posição exata da tag no bloco de texto original
-                                texto_completo_run = paragrafo.runs[i].text
-                                if tag in texto_completo_run:
-                                    partes = texto_completo_run.split(tag)
-                                    # Texto antes da tag (mantém formatação original)
-                                    paragrafo.runs[i].text = partes[0]
-                                    
-                                    # Cria uma nova run apenas para o valor (Força Negrito aqui)
-                                    nova_run_valor = paragrafo.add_run(valor)
-                                    nova_run_valor.bold = True
-                                    
-                                    # Se o Word tiver estilos de fonte na run original, copia para o negrito
-                                    if paragrafo.runs[i].font.name:
-                                        nova_run_valor.font.name = paragrafo.runs[i].font.name
-                                    if paragrafo.runs[i].font.size:
-                                        nova_run_valor.font.size = paragrafo.runs[i].font.size
-                                        
-                                    # Texto após a tag (mantém formatação original)
-                                    if len(partes) > 1:
-                                        nova_run_resto = paragrafo.add_run(partes[1])
-                                        if paragrafo.runs[i].font.name:
-                                            nova_run_resto.font.name = paragrafo.runs[i].font.name
-                                        if paragrafo.runs[i].font.size:
-                                            nova_run_resto.font.size = paragrafo.runs[i].font.size
-                                else:
-                                    # Se a tag estava dividida entre várias runs, substitui na primeira de forma limpa
-                                    paragrafo.runs[i].text = texto_combinado.replace(tag, valor)
-                                    paragrafo.runs[i].bold = True
-                                
-                                # Limpa o texto das runs adjacentes que faziam parte da tag quebrada
+                                # Substituição de texto simples sem injetar propriedades de estilo adicionais
+                                paragrafo.runs[i].text = texto_combinated = texto_combinado.replace(tag, valor)
                                 for r in paragrafo.runs[i+1:j]:
                                     r.text = ""
                                 break
@@ -173,7 +144,7 @@ if nr_escolhida != "Clique para escolher..." and arquivo_excel is not None:
                         "[DATA_FINAL]": data_formatada
                     }
                     
-                    # Executa a substituição avançada isolando os negritos
+                    # Substituição respeitando a formatação original do seu Word
                     processar_substituicao(doc, todas_tags)
                                     
                     nome_limpo = str(lambda_linha.get("nome", "aluno")).strip().replace(" ", "_")
@@ -187,7 +158,7 @@ if nr_escolhida != "Clique para escolher..." and arquivo_excel is not None:
                     
                     barra_progresso.progress((idx + 1) / total_linhas)
                 
-                # FASE 2: Conversão em lote de Alta Performance
+                # FASE 2: Conversão em lote de Alta Performance estável para Linux
                 msg_status.info("🔄 Passo 2/3: A converter todos os certificados para PDF em lote (Alta Performance)...")
                 barra_progresso.empty()
                 
@@ -203,7 +174,7 @@ if nr_escolhida != "Clique para escolher..." and arquivo_excel is not None:
                     '--outdir', pasta_temp
                 ] + lista_docx_caminhos, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
                 
-                # FASE 3: Criação do ZIP
+                # FASE 3: Criação do ZIP final apenas com os arquivos convertidos
                 msg_status.info("🔄 Passo 3/3: A criar o pacote ZIP de download...")
                 memoria_zip = BytesIO()
                 
@@ -219,7 +190,7 @@ if nr_escolhida != "Clique para escolher..." and arquivo_excel is not None:
                 memoria_zip.seek(0)
                 
                 msg_status.empty() 
-                st.success("✨ Processamento Concluído! Apenas os dados inseridos estão em negrito.")
+                st.success("✨ Processamento Concluído com Sucesso e Estabilidade total!")
                 
                 st.download_button(
                     label="📥 Descarregar Todos os Certificados em PDF (.ZIP)",
