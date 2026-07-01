@@ -5,18 +5,17 @@ import shutil
 from io import BytesIO
 import pandas as pd
 import streamlit as st
+from docx import Document
 
+# 1. Configura o visual da página do site
+st.set_page_config(page_title="Gerador de Certificados NR", page_icon="🎓", layout="centered")
+
+# Dicionário global para tradução dos meses em português
 MESES_PT = {
     1: "Janeiro", 2: "Fevereiro", 3: "Março", 4: "Abril",
     5: "Maio", 6: "Junho", 7: "Julho", 8: "Agosto",
     9: "Setembro", 10: "Outubro", 11: "Novembro", 12: "Dezembro"
 }
-
-
-from docx import Document
-
-# 1. Configura o visual da página do site
-st.set_page_config(page_title="Gerador de Certificados NR", page_icon="🎓", layout="centered")
 
 # Cria as caixas de memória do Streamlit se elas não existirem
 if "conectado" not in st.session_state:
@@ -62,16 +61,45 @@ MODELOS = {
     "NR-35 Trabalho em Altura": "modelo_certificadoNR35.docx"
 }
 
-# Lógica de substituição de texto original
-def processar_substituicao(paragrafo, todas_tags):
-    for tag, valor in todas_tags.items():
-        if tag in paragrafo.text:
-            for run in paragrafo.runs:
-                if tag in run.text:
-                    run.text = run.text.replace(tag, valor)
+# Lógica avançada para juntar pedaços quebrados de tags pelo Word e manter a formatação
+def processar_substituicao(doc, todas_tags):
+    def substituir_no_elemento(elemento):
+        for paragrafo in elemento.paragraphs:
+            for tag, valor in todas_tags.items():
+                if tag in paragrafo.text:
+                    for i in range(len(paragrafo.runs)):
+                        for j in range(i + 1, len(paragrafo.runs) + 1):
+                            texto_combinado = "".join([r.text for r in paragrafo.runs[i:j]])
+                            if tag in texto_combinado:
+                                paragrafo.runs[i].text = texto_combinado.replace(tag, valor)
+                                for r in paragrafo.runs[i+1:j]:
+                                    r.text = ""
+                                break
+
+    substituir_no_elemento(doc)
+    for tabela in doc.tables:
+        for linha in tabela.rows:
+            for celula in linha.cells:
+                substituir_no_elemento(celula)
+
+# SE NÃO ESTIVER CONECTADO: Mostra apenas o Login E a Planilha Modelo embaixo
+if not st.session_state["conectado"]:
+    tela_login()
+    st.write("---")
+    
+    caminho_planilha_modelo = os.path.join("static", "modelo_dados.xlsx")
+    if os.path.exists(caminho_planilha_modelo):
+        with open(caminho_planilha_modelo, "rb") as f:
+            st.download_button(
+                label="ℹ️ Descarregar Planilha Modelo de Inserção",
+                data=f,
+                file_name="modelo_dados.xlsx",
+                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+            )
+    st.stop()
 
 # ==========================================================
-# PAINEL PRINCIPAL
+# PAINEL PRINCIPAL (SÓ APARECE APÓS LOGIN)
 # ==========================================================
 st.title("🎓 Gerador Web de Certificados NR (PDF)")
 
@@ -97,20 +125,19 @@ if nr_escolhida != "Clique para escolher..." and arquivo_excel is not None:
                 barra_progresso = st.progress(0)
                 total_linhas = len(df)
                 
-                # Criamos pastas temporárias no servidor para fazer a conversão
                 pasta_temp = "temp_certificados"
                 os.makedirs(pasta_temp, exist_ok=True)
                 
                 with zipfile.ZipFile(memoria_zip, 'a', zipfile.ZIP_DEFLATED) as zip_file:
-                    for idx, linha in df.iterrows():
+                    for idx, lambda_linha in df.iterrows():
                         doc = Document(caminho_modelo)
-                        # Formatação de data ultra segura e resistente a erros
-                        # Formatação de data definitiva (Lê Texto ou Data Real)
+                        
+                        # Formatação de data definitiva (Lê Texto ou Data Real do Excel)
                         data_formatada = ""
-                        if pd.notna(linha.get("Data_Final")) and str(linha["Data_Final"]).strip() != "":
-                            val_data = linha["Data_Final"]
+                        if pd.notna(lambda_linha.get("Data_Final")) and str(lambda_linha["Data_Final"]).strip() != "":
+                            val_data = lambda_linha["Data_Final"]
                             try:
-                                # 1. Se o Pandas já leu como um objeto de Data correto:
+                                # 1. Se o Pandas leu como um objeto de Data correto do Excel
                                 dt = pd.to_datetime(val_data)
                                 dia = dt.day
                                 ano = dt.year
@@ -118,8 +145,8 @@ if nr_escolhida != "Clique para escolher..." and arquivo_excel is not None:
                                 data_formatada = f"{dia} de {mes_nome} de {ano}"
                             except Exception:
                                 try:
-                                    # 2. Se o Pandas leu como Texto no formato YYYY-MM-DD (Ex: 2026-03-14)
-                                    texto_data = str(val_data).split()[0] # Remove horas se houver
+                                    # 2. Se o Pandas leu como Texto no formato YYYY-MM-DD
+                                    texto_data = str(val_data).split()[0]
                                     partes = texto_data.split('-')
                                     if len(partes) == 3:
                                         ano = int(partes[0])
@@ -127,8 +154,8 @@ if nr_escolhida != "Clique para escolher..." and arquivo_excel is not None:
                                         dia = int(partes[2])
                                         mes_nome = MESES_PT.get(mes, "")
                                         data_formatada = f"{dia} de {mes_nome} de {ano}"
-                                    # 3. Se o Texto estiver no formato DD/MM/YYYY (Ex: 14/03/2026)
                                     else:
+                                        # 3. Se o Texto estiver no formato DD/MM/YYYY
                                         partes = texto_data.split('/')
                                         if len(partes) == 3:
                                             dia = int(partes[0])
@@ -137,43 +164,33 @@ if nr_escolhida != "Clique para escolher..." and arquivo_excel is not None:
                                             mes_nome = MESES_PT.get(mes, "")
                                             data_formatada = f"{dia} de {mes_nome} de {ano}"
                                 except Exception:
-                                    # Plano B: Se tudo falhar, mantém o texto original da célula
                                     data_formatada = str(val_data).strip()
                         
+                        # Mapeamento das tags
                         dados_com_negrito = {
-                            "[NOME]": str(linha["Nome"]) if pd.notna(linha.get("Nome")) else "",
-                            "[CPF]": str(linha["CPF"]) if pd.notna(linha.get("CPF")) else "",
-                            "[EMPRESA]": str(linha["Empresa"]) if pd.notna(linha.get("Empresa")) else "",
-                            "[CNPJ]": str(linha["CNPJ"]) if pd.notna(linha.get("CNPJ")) else "",
-                            "[PERIODO]": str(linha["Periodo"]) if pd.notna(linha.get("Periodo")) else ""
+                            "[NOME]": str(lambda_linha["Nome"]) if pd.notna(lambda_linha.get("Nome")) else "",
+                            "[CPF]": str(lambda_linha["CPF"]) if pd.notna(lambda_linha.get("CPF")) else "",
+                            "[EMPRESA]": str(lambda_linha["Empresa"]) if pd.notna(lambda_linha.get("Empresa")) else "",
+                            "[CNPJ]": str(lambda_linha["CNPJ"]) if pd.notna(lambda_linha.get("CNPJ")) else "",
+                            "[PERIODO]": str(lambda_linha["Periodo"]) if pd.notna(lambda_linha.get("Periodo")) else ""
                         }
                         dados_sem_negrito = {"[DATA_FINAL]": data_formatada}
                         todas_tags = {**dados_com_negrito, **dados_sem_negrito}
                         
-                        for p in doc.paragraphs:
-                            processar_substituicao(p, todas_tags)
-                        for t in doc.tables:
-                            for row in t.rows:
-                                for cell in row.cells:
-                                    for p in cell.paragraphs:
-                                        processar_substituicao(p, todas_tags)
+                        # Executa a substituição avançada
+                        processar_substituicao(doc, todas_tags)
                                         
-                        nome_limpo = str(linha["Nome"]).strip().replace(" ", "_")
+                        nome_limpo = str(lambda_linha["Nome"]).strip().replace(" ", "_")
                         nr_nome = nr_escolhida.replace(' ', '_')
                         
-                        # Nomes dos arquivos temporários
                         nome_docx = os.path.join(pasta_temp, f"{nr_nome}_{nome_limpo}.docx")
                         nome_pdf = os.path.join(pasta_temp, f"{nr_nome}_{nome_limpo}.pdf")
                         
-                        # 1. Salva o Word temporariamente
                         doc.save(nome_docx)
                         
-                        # 2. Comando para o LibreOffice converter de Word para PDF silenciosamente
-                        # Esse comando funciona de forma nativa no Linux do Streamlit Cloud
-                        # Comando otimizado para o LibreOffice forçar a fidelidade do layout original
                         subprocess.run([
-                            'soffice',
-                            '--headless',
+                            'soffice', 
+                            '--headless', 
                             '--invisible',
                             '--nodefault',
                             '--nofirststartwizard',
@@ -182,18 +199,14 @@ if nr_escolhida != "Clique para escolher..." and arquivo_excel is not None:
                             nome_docx
                         ], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
                         
-                        # 3. Adiciona o PDF gerado dentro do arquivo ZIP final se ele existir
                         if os.path.exists(nome_pdf):
                             zip_file.write(nome_pdf, os.path.basename(nome_pdf))
                         else:
-                            # Caso o LibreOffice falhe (ex: rodando local no Windows sem ele instalado), salva o DOCX como plano B
                             zip_file.write(nome_docx, os.path.basename(nome_docx))
                         
                         barra_progresso.progress((idx + 1) / total_linhas)
                 
-                # Limpa a pasta temporária do servidor após terminar
                 shutil.rmtree(pasta_temp, ignore_errors=True)
-                
                 memoria_zip.seek(0)
                 st.success("✨ Todos os certificados foram convertidos e gerados em PDF!")
                 
