@@ -84,7 +84,7 @@ if not st.session_state["conectado"]:
     if os.path.exists(caminho_planilha_modelo):
         with open(caminho_planilha_modelo, "rb") as f:
             st.download_button(
-                label="ℹ️ Descarregar Planilha Modelo de Inserção",
+                label="ℹ️ Baixar Planilha Modelo de Inserção",
                 data=f,
                 file_name="modelo_dados.xlsx",
                 mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
@@ -159,7 +159,7 @@ if nr_escolhida != "Clique para escolher..." and arquivo_excel is not None:
                     barra_progresso.progress((idx + 1) / total_linhas)
                 
                 # FASE 2: Conversão em lote ultra-rápida corrigida para Linux
-                msg_status.info("🔄 Passo 2/3: A converter todos os certificados para PDF em lote (Alta Performance)...")
+                msg_status.info("🔄 Passo 2/3: A converter todos os certificados para PDF em lote ...")
                 barra_progresso.empty()
                 
                 # Criamos uma lista explícita com o caminho de todos os ficheiros DOCX criados
@@ -197,7 +197,7 @@ if nr_escolhida != "Clique para escolher..." and arquivo_excel is not None:
                 st.success("✨ Processamento Concluído! Todos os PDFs foram gerados com sucesso.")
                 
                 st.download_button(
-                    label="📥 Descarregar Todos os Certificados em PDF (.ZIP)",
+                    label="📥 Baixar Todos os Certificados em PDF (.ZIP)",
                     data=memoria_zip,
                     file_name=f"Certificados_PDF_{nr_escolhida.replace(' ', '_')}.zip",
                     mime="application/zip"
@@ -210,7 +210,7 @@ caminho_planilha_modelo = os.path.join("static", "modelo_dados.xlsx")
 if os.path.exists(caminho_planilha_modelo):
     with open(caminho_planilha_modelo, "rb") as f:
         st.download_button(
-            label="ℹ️ Descarregar Planilha Modelo de Inserção",
+            label="ℹ️ Baixar Planilha Modelo de Inserção",
             data=f,
             file_name="modelo_dados.xlsx",
             mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
