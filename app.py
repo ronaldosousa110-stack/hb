@@ -116,6 +116,10 @@ if nr_escolhida != "Clique para escolher..." and arquivo_excel is not None:
     if st.button("Processar e Gerar Certificados em PDF", type="primary"):
         try:
             df = pd.read_excel(arquivo_excel)
+            
+            # Limpa espaços em branco e deixa o cabeçalho em minúsculas para evitar erros de digitação
+            df.columns = df.columns.str.strip().str.lower()
+            
             caminho_modelo = os.path.join('modelos_docx', MODELOS[nr_escolhida])
             
             if not os.path.exists(caminho_modelo):
@@ -132,10 +136,17 @@ if nr_escolhida != "Clique para escolher..." and arquivo_excel is not None:
                     for idx, lambda_linha in df.iterrows():
                         doc = Document(caminho_modelo)
                         
-                        # Formatação de data definitiva (Lê Texto ou Data Real do Excel)
+                        # CAÇA DA COLUNA DE DATA: Procura qualquer coluna que tenha a palavra "data" no nome
+                        coluna_data_real = None
+                        for col in df.columns:
+                            if "data" in str(col).lower():
+                                coluna_data_real = col
+                                break
+                        
                         data_formatada = ""
-                        if pd.notna(lambda_linha.get("Data_Final")) and str(lambda_linha["Data_Final"]).strip() != "":
-                            val_data = lambda_linha["Data_Final"]
+                        # Se encontrou alguma coluna de data válida, processa o valor dela
+                        if coluna_data_real and pd.notna(lambda_linha.get(coluna_data_real)) and str(lambda_linha[coluna_data_real]).strip() != "":
+                            val_data = lambda_linha[coluna_data_real]
                             try:
                                 # 1. Se o Pandas leu como um objeto de Data correto do Excel
                                 dt = pd.to_datetime(val_data)
@@ -166,27 +177,25 @@ if nr_escolhida != "Clique para escolher..." and arquivo_excel is not None:
                                 except Exception:
                                     data_formatada = str(val_data).strip()
                         
-                        # Mapeamento das tags
-                        dados_com_negrito = {
-                            "[NOME]": str(lambda_linha["Nome"]) if pd.notna(lambda_linha.get("Nome")) else "",
-                            "[CPF]": str(lambda_linha["CPF"]) if pd.notna(lambda_linha.get("CPF")) else "",
-                            "[EMPRESA]": str(lambda_linha["Empresa"]) if pd.notna(lambda_linha.get("Empresa")) else "",
-                            "[CNPJ]": str(lambda_linha["CNPJ"]) if pd.notna(lambda_linha.get("CNPJ")) else "",
-                            "[PERIODO]": str(lambda_linha["Periodo"]) if pd.notna(lambda_linha.get("Periodo")) else ""
-                        }
-                        # Garante que se a data for gerada como vazia ou apenas um ponto, 
-                        # ela mostre a data atual ou um texto visível para sabermos o que houve
-                        if data_formatada == "" or data_formatada == ".":
-                            # Como plano de segurança absoluta, tenta pegar o texto puro da célula de novo
-                            data_formatada = str(lambda_linha.get("data_final", "Data Não Encontrada")).strip()
+                        # Se mesmo assim não encontrou nenhuma coluna com "data", deixa um aviso claro
+                        if data_formatada == "":
+                            data_formatada = "Coluna de Data não encontrada"
                         
+                        # Mapeamento das tags (puxando as colunas em minúsculas limpas pelo script)
+                        dados_com_negrito = {
+                            "[NOME]": str(lambda_linha.get("nome", "")).strip() if pd.notna(lambda_linha.get("nome")) else "",
+                            "[CPF]": str(lambda_linha.get("cpf", "")).strip() if pd.notna(lambda_linha.get("cpf")) else "",
+                            "[EMPRESA]": str(lambda_linha.get("empresa", "")).strip() if pd.notna(lambda_linha.get("empresa")) else "",
+                            "[CNPJ]": str(lambda_linha.get("cnpj", "")).strip() if pd.notna(lambda_linha.get("cnpj")) else "",
+                            "[PERIODO]": str(lambda_linha.get("periodo", "")).strip() if pd.notna(lambda_linha.get("periodo")) else ""
+                        }
                         dados_sem_negrito = {"[DATA_FINAL]": data_formatada}
                         todas_tags = {**dados_com_negrito, **dados_sem_negrito}
                         
-                        # Executa a substituição avançada
+                        # Executa a substituição avançada mantendo o formato original
                         processar_substituicao(doc, todas_tags)
                                         
-                        nome_limpo = str(lambda_linha["Nome"]).strip().replace(" ", "_")
+                        nome_limpo = str(lambda_linha.get("nome", "aluno")).strip().replace(" ", "_")
                         nr_nome = nr_escolhida.replace(' ', '_')
                         
                         nome_docx = os.path.join(pasta_temp, f"{nr_nome}_{nome_limpo}.docx")
@@ -194,6 +203,7 @@ if nr_escolhida != "Clique para escolher..." and arquivo_excel is not None:
                         
                         doc.save(nome_docx)
                         
+                        # Comando de conversão Pixel Perfect pelo LibreOffice do servidor Linux
                         subprocess.run([
                             'soffice', 
                             '--headless', 
@@ -223,7 +233,7 @@ if nr_escolhida != "Clique para escolher..." and arquivo_excel is not None:
                     mime="application/zip"
                 )
         except Exception as e:
-            st.error(f"Ocorreu um erro ao ler a planilha: {e}")
+            st.error(f"Ocorreu um erro ao processar a planilha: {e}")
 
 st.write("---")
 caminho_planilha_modelo = os.path.join("static", "modelo_dados.xlsx")
