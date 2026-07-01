@@ -54,21 +54,47 @@ MODELOS = {
     "NR-35 Trabalho em Altura": "modelo_certificadoNR35.docx"
 }
 
-# Lógica avançada para juntar pedaços quebrados de tags pelo Word e FORÇAR NEGRITO
+# Lógica avançada para isolar a tag e aplicar NEGRITO APENAS no valor inserido
 def processar_substituicao(doc, todas_tags):
     def substituir_no_elemento(elemento):
         for paragrafo in elemento.paragraphs:
             for tag, valor in todas_tags.items():
                 if tag in paragrafo.text:
+                    # TRUQUE DE ISOLAMENTO: Junta os pedaços e reconstrói o parágrafo se achar a tag
                     for i in range(len(paragrafo.runs)):
                         for j in range(i + 1, len(paragrafo.runs) + 1):
                             texto_combinado = "".join([r.text for r in paragrafo.runs[i:j]])
                             if tag in texto_combinado:
-                                # Substitui o texto na primeira run e FORÇA o negrito nela
-                                paragrafo.runs[i].text = texto_combinado.replace(tag, valor)
-                                paragrafo.runs[i].bold = True  # <-- Garante o Negrito aqui!
+                                # Encontra a posição exata da tag no bloco de texto original
+                                texto_completo_run = paragrafo.runs[i].text
+                                if tag in texto_completo_run:
+                                    partes = texto_completo_run.split(tag)
+                                    # Texto antes da tag (mantém formatação original)
+                                    paragrafo.runs[i].text = partes[0]
+                                    
+                                    # Cria uma nova run apenas para o valor (Força Negrito aqui)
+                                    nova_run_valor = paragrafo.add_run(valor)
+                                    nova_run_valor.bold = True
+                                    
+                                    # Se o Word tiver estilos de fonte na run original, copia para o negrito
+                                    if paragrafo.runs[i].font.name:
+                                        nova_run_valor.font.name = paragrafo.runs[i].font.name
+                                    if paragrafo.runs[i].font.size:
+                                        nova_run_valor.font.size = paragrafo.runs[i].font.size
+                                        
+                                    # Texto após a tag (mantém formatação original)
+                                    if len(partes) > 1:
+                                        nova_run_resto = paragrafo.add_run(partes[1])
+                                        if paragrafo.runs[i].font.name:
+                                            nova_run_resto.font.name = paragrafo.runs[i].font.name
+                                        if paragrafo.runs[i].font.size:
+                                            nova_run_resto.font.size = paragrafo.runs[i].font.size
+                                else:
+                                    # Se a tag estava dividida entre várias runs, substitui na primeira de forma limpa
+                                    paragrafo.runs[i].text = texto_combinado.replace(tag, valor)
+                                    paragrafo.runs[i].bold = True
                                 
-                                # Limpa o texto das outras runs para não duplicar
+                                # Limpa o texto das runs adjacentes que faziam parte da tag quebrada
                                 for r in paragrafo.runs[i+1:j]:
                                     r.text = ""
                                 break
@@ -138,7 +164,6 @@ if nr_escolhida != "Clique para escolher..." and arquivo_excel is not None:
                     else:
                         data_formatada = "Data não preenchida"
                     
-                    # Unificámos todas as tags num único dicionário. Todas passarão pelo processo de negrito forçado!
                     todas_tags = {
                         "[NOME]": str(lambda_linha.get("nome", "")).strip() if pd.notna(lambda_linha.get("nome")) else "",
                         "[CPF]": str(lambda_linha.get("cpf", "")).strip() if pd.notna(lambda_linha.get("cpf")) else "",
@@ -148,7 +173,7 @@ if nr_escolhida != "Clique para escolher..." and arquivo_excel is not None:
                         "[DATA_FINAL]": data_formatada
                     }
                     
-                    # Executa a substituição avançada aplicando o negrito no documento Word
+                    # Executa a substituição avançada isolando os negritos
                     processar_substituicao(doc, todas_tags)
                                     
                     nome_limpo = str(lambda_linha.get("nome", "aluno")).strip().replace(" ", "_")
@@ -194,7 +219,7 @@ if nr_escolhida != "Clique para escolher..." and arquivo_excel is not None:
                 memoria_zip.seek(0)
                 
                 msg_status.empty() 
-                st.success("✨ Processamento Concluído! Todos os PDFs foram gerados com as tags em negrito.")
+                st.success("✨ Processamento Concluído! Apenas os dados inseridos estão em negrito.")
                 
                 st.download_button(
                     label="📥 Descarregar Todos os Certificados em PDF (.ZIP)",
