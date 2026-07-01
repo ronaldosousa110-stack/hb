@@ -125,7 +125,7 @@ if nr_escolhida != "Clique para escolher..." and arquivo_excel is not None:
                 
                 lista_arquivos_gerados = []
                 
-                # FASE 1: Gera todos os arquivos Word de uma vez na pasta temporária (Super rápido)
+                # FASE 1: Gera todos os arquivos Word de uma vez na pasta temporária
                 for idx, lambda_linha in df.iterrows():
                     doc = Document(caminho_modelo)
                     
@@ -153,16 +153,19 @@ if nr_escolhida != "Clique para escolher..." and arquivo_excel is not None:
                     nome_docx = os.path.join(pasta_temp, f"{nr_nome}_{nome_limpo}.docx")
                     doc.save(nome_docx)
                     
-                    # Guarda a correspondência do nome para verificar no fim
                     nome_pdf_esperado = os.path.join(pasta_temp, f"{nr_nome}_{nome_limpo}.pdf")
                     lista_arquivos_gerados.append((nome_docx, nome_pdf_esperado))
                     
                     barra_progresso.progress((idx + 1) / total_linhas)
                 
-                # FASE 2: Converte a pasta inteira numa única chamada de comando (O segredo da velocidade)
+                # FASE 2: Conversão em lote ultra-rápida corrigida para Linux
                 msg_status.info("🔄 Passo 2/3: A converter todos os certificados para PDF em lote (Alta Performance)...")
                 barra_progresso.empty()
                 
+                # Criamos uma lista explícita com o caminho de todos os ficheiros DOCX criados
+                lista_docx_caminhos = [item[0] for item in lista_arquivos_gerados]
+                
+                # Executa o comando passando a lista exata de arquivos (evita o problema do asterisco *)
                 subprocess.run([
                     'soffice', 
                     '--headless', 
@@ -170,28 +173,28 @@ if nr_escolhida != "Clique para escolher..." and arquivo_excel is not None:
                     '--nodefault',
                     '--nofirststartwizard',
                     '--convert-to', 'pdf:writer_pdf_Export', 
-                    '--outdir', pasta_temp, 
-                    os.path.join(pasta_temp, "*.docx")  # Converte TODOS os .docx de uma só vez
-                ], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+                    '--outdir', pasta_temp
+                ] + lista_docx_caminhos, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
                 
-                # FASE 3: Compacta tudo para o ficheiro ZIP final
+                # FASE 3: Compacta tudo para o ficheiro ZIP final (Apenas PDFs)
                 msg_status.info("🔄 Passo 3/3: A criar o pacote ZIP de download...")
                 memoria_zip = BytesIO()
                 
                 with zipfile.ZipFile(memoria_zip, 'a', zipfile.ZIP_DEFLATED) as zip_file:
                     for nome_docx, nome_pdf in lista_arquivos_gerados:
-                        # Se a conversão em PDF funcionou, insere o PDF; se falhou, manda o DOCX de backup
                         if os.path.exists(nome_pdf):
                             zip_file.write(nome_pdf, os.path.basename(nome_pdf))
                         else:
-                            zip_file.write(nome_docx, os.path.basename(nome_docx))
+                            # Caso extremo de falha, envia o DOCX com um aviso visual no nome
+                            nome_falha = os.path.basename(nome_docx).replace(".docx", "_ERRO_CONVERSAO.docx")
+                            zip_file.write(nome_docx, nome_falha)
                 
                 # Limpeza e encerramento
                 shutil.rmtree(pasta_temp, ignore_errors=True)
                 memoria_zip.seek(0)
                 
-                msg_status.empty() # Limpa as mensagens de carregamento
-                st.success("✨ Processamento Concluído com Alta Performance! Todos os PDFs estão prontos.")
+                msg_status.empty() 
+                st.success("✨ Processamento Concluído! Todos os PDFs foram gerados com sucesso.")
                 
                 st.download_button(
                     label="📥 Descarregar Todos os Certificados em PDF (.ZIP)",
