@@ -105,19 +105,40 @@ if nr_escolhida != "Clique para escolher..." and arquivo_excel is not None:
                     for idx, linha in df.iterrows():
                         doc = Document(caminho_modelo)
                         # Formatação de data ultra segura e resistente a erros
+                        # Formatação de data definitiva (Lê Texto ou Data Real)
                         data_formatada = ""
-                        if pd.notna(linha.get("Data_Final")):
+                        if pd.notna(linha.get("Data_Final")) and str(linha["Data_Final"]).strip() != "":
+                            val_data = linha["Data_Final"]
                             try:
-                                # Força o Pandas a ler exatamente o formato ANO-MÊS-DIA (YYYY-MM-DD)
-                                dt = pd.to_datetime(linha["Data_Final"], format='%Y-%m-%d', errors='coerce')
-                                if pd.notna(dt):
-                                    dia = dt.day
-                                    ano = dt.year
-                                    mes_nome = MESES_PT.get(dt.month, "")
-                                    data_formatada = f"{dia} de {mes_nome} de {ano}"
+                                # 1. Se o Pandas já leu como um objeto de Data correto:
+                                dt = pd.to_datetime(val_data)
+                                dia = dt.day
+                                ano = dt.year
+                                mes_nome = MESES_PT.get(dt.month, "")
+                                data_formatada = f"{dia} de {mes_nome} de {ano}"
                             except Exception:
-                                # Se mesmo assim falhar ou for um formato inesperado, tenta ler como texto puro
-                                data_formatada = str(linha["Data_Final"]).strip()
+                                try:
+                                    # 2. Se o Pandas leu como Texto no formato YYYY-MM-DD (Ex: 2026-03-14)
+                                    texto_data = str(val_data).split()[0] # Remove horas se houver
+                                    partes = texto_data.split('-')
+                                    if len(partes) == 3:
+                                        ano = int(partes[0])
+                                        mes = int(partes[1])
+                                        dia = int(partes[2])
+                                        mes_nome = MESES_PT.get(mes, "")
+                                        data_formatada = f"{dia} de {mes_nome} de {ano}"
+                                    # 3. Se o Texto estiver no formato DD/MM/YYYY (Ex: 14/03/2026)
+                                    else:
+                                        partes = texto_data.split('/')
+                                        if len(partes) == 3:
+                                            dia = int(partes[0])
+                                            mes = int(partes[1])
+                                            ano = int(partes[2])
+                                            mes_nome = MESES_PT.get(mes, "")
+                                            data_formatada = f"{dia} de {mes_nome} de {ano}"
+                                except Exception:
+                                    # Plano B: Se tudo falhar, mantém o texto original da célula
+                                    data_formatada = str(val_data).strip()
                         
                         dados_com_negrito = {
                             "[NOME]": str(linha["Nome"]) if pd.notna(linha.get("Nome")) else "",
