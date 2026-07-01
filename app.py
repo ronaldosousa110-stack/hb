@@ -64,8 +64,8 @@ def processar_substituicao(doc, todas_tags):
                         for j in range(i + 1, len(paragrafo.runs) + 1):
                             texto_combinado = "".join([r.text for r in paragrafo.runs[i:j]])
                             if tag in texto_combinado:
-                                # Substituição de texto simples sem injetar propriedades de estilo adicionais
-                                paragrafo.runs[i].text = texto_combinated = texto_combinado.replace(tag, valor)
+                                # Substituição limpa corrigida
+                                paragrafo.runs[i].text = texto_combinado.replace(tag, valor)
                                 for r in paragrafo.runs[i+1:j]:
                                     r.text = ""
                                 break
@@ -144,7 +144,6 @@ if nr_escolhida != "Clique para escolher..." and arquivo_excel is not None:
                         "[DATA_FINAL]": data_formatada
                     }
                     
-                    # Substituição respeitando a formatação original do seu Word
                     processar_substituicao(doc, todas_tags)
                                     
                     nome_limpo = str(lambda_linha.get("nome", "aluno")).strip().replace(" ", "_")
@@ -158,8 +157,8 @@ if nr_escolhida != "Clique para escolher..." and arquivo_excel is not None:
                     
                     barra_progresso.progress((idx + 1) / total_linhas)
                 
-                # FASE 2: Conversão em lote de Alta Performance estável para Linux
-                msg_status.info("🔄 Passo 2/3: A converter todos os certificados para PDF em lote (Alta Performance)...")
+                # FASE 2: Conversão em lote com otimização extra de performance
+                msg_status.info("🔄 Passo 2/3: A converter todos os certificados para PDF em lote...")
                 barra_progresso.empty()
                 
                 lista_docx_caminhos = [item[0] for item in lista_arquivos_gerados]
@@ -170,11 +169,13 @@ if nr_escolhida != "Clique para escolher..." and arquivo_excel is not None:
                     '--invisible',
                     '--nodefault',
                     '--nofirststartwizard',
+                    '--norestore',
+                    '--nologo',
                     '--convert-to', 'pdf:writer_pdf_Export', 
                     '--outdir', pasta_temp
                 ] + lista_docx_caminhos, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
                 
-                # FASE 3: Criação do ZIP final apenas com os arquivos convertidos
+                # FASE 3: Criação do ZIP final
                 msg_status.info("🔄 Passo 3/3: A criar o pacote ZIP de download...")
                 memoria_zip = BytesIO()
                 
@@ -190,7 +191,7 @@ if nr_escolhida != "Clique para escolher..." and arquivo_excel is not None:
                 memoria_zip.seek(0)
                 
                 msg_status.empty() 
-                st.success("✨ Processamento Concluído com Sucesso e Estabilidade total!")
+                st.success("✨ Processamento Concluído com Sucesso!")
                 
                 st.download_button(
                     label="📥 Descarregar Todos os Certificados em PDF (.ZIP)",
