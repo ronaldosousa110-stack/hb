@@ -54,7 +54,7 @@ MODELOS = {
     "NR-35 Trabalho em Altura": "modelo_certificadoNR35.docx"
 }
 
-# Lógica avançada para juntar pedaços quebrados de tags pelo Word e manter a formatação
+# Lógica avançada para juntar pedaços quebrados de tags pelo Word e FORÇAR NEGRITO
 def processar_substituicao(doc, todas_tags):
     def substituir_no_elemento(elemento):
         for paragrafo in elemento.paragraphs:
@@ -64,7 +64,11 @@ def processar_substituicao(doc, todas_tags):
                         for j in range(i + 1, len(paragrafo.runs) + 1):
                             texto_combinado = "".join([r.text for r in paragrafo.runs[i:j]])
                             if tag in texto_combinado:
+                                # Substitui o texto na primeira run e FORÇA o negrito nela
                                 paragrafo.runs[i].text = texto_combinado.replace(tag, valor)
+                                paragrafo.runs[i].bold = True  # <-- Garante o Negrito aqui!
+                                
+                                # Limpa o texto das outras runs para não duplicar
                                 for r in paragrafo.runs[i+1:j]:
                                     r.text = ""
                                 break
@@ -84,7 +88,7 @@ if not st.session_state["conectado"]:
     if os.path.exists(caminho_planilha_modelo):
         with open(caminho_planilha_modelo, "rb") as f:
             st.download_button(
-                label="ℹ️ Baixar Planilha Modelo de Inserção",
+                label="ℹ️ Descarregar Planilha Modelo de Inserção",
                 data=f,
                 file_name="modelo_dados.xlsx",
                 mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
@@ -125,7 +129,6 @@ if nr_escolhida != "Clique para escolher..." and arquivo_excel is not None:
                 
                 lista_arquivos_gerados = []
                 
-                # FASE 1: Gera todos os arquivos Word de uma vez na pasta temporária
                 for idx, lambda_linha in df.iterrows():
                     doc = Document(caminho_modelo)
                     
@@ -135,16 +138,17 @@ if nr_escolhida != "Clique para escolher..." and arquivo_excel is not None:
                     else:
                         data_formatada = "Data não preenchida"
                     
-                    dados_com_negrito = {
+                    # Unificámos todas as tags num único dicionário. Todas passarão pelo processo de negrito forçado!
+                    todas_tags = {
                         "[NOME]": str(lambda_linha.get("nome", "")).strip() if pd.notna(lambda_linha.get("nome")) else "",
                         "[CPF]": str(lambda_linha.get("cpf", "")).strip() if pd.notna(lambda_linha.get("cpf")) else "",
                         "[EMPRESA]": str(lambda_linha.get("empresa", "")).strip() if pd.notna(lambda_linha.get("empresa")) else "",
                         "[CNPJ]": str(lambda_linha.get("cnpj", "")).strip() if pd.notna(lambda_linha.get("cnpj")) else "",
-                        "[PERIODO]": str(lambda_linha.get("periodo", "")).strip() if pd.notna(lambda_linha.get("periodo")) else ""
+                        "[PERIODO]": str(lambda_linha.get("periodo", "")).strip() if pd.notna(lambda_linha.get("periodo")) else "",
+                        "[DATA_FINAL]": data_formatada
                     }
-                    dados_sem_negrito = {"[DATA_FINAL]": data_formatada}
-                    todas_tags = {**dados_com_negrito, **dados_sem_negrito}
                     
+                    # Executa a substituição avançada aplicando o negrito no documento Word
                     processar_substituicao(doc, todas_tags)
                                     
                     nome_limpo = str(lambda_linha.get("nome", "aluno")).strip().replace(" ", "_")
@@ -158,14 +162,12 @@ if nr_escolhida != "Clique para escolher..." and arquivo_excel is not None:
                     
                     barra_progresso.progress((idx + 1) / total_linhas)
                 
-                # FASE 2: Conversão em lote ultra-rápida corrigida para Linux
-                msg_status.info("🔄 Passo 2/3: A converter todos os certificados para PDF em lote ...")
+                # FASE 2: Conversão em lote de Alta Performance
+                msg_status.info("🔄 Passo 2/3: A converter todos os certificados para PDF em lote (Alta Performance)...")
                 barra_progresso.empty()
                 
-                # Criamos uma lista explícita com o caminho de todos os ficheiros DOCX criados
                 lista_docx_caminhos = [item[0] for item in lista_arquivos_gerados]
                 
-                # Executa o comando passando a lista exata de arquivos (evita o problema do asterisco *)
                 subprocess.run([
                     'soffice', 
                     '--headless', 
@@ -176,7 +178,7 @@ if nr_escolhida != "Clique para escolher..." and arquivo_excel is not None:
                     '--outdir', pasta_temp
                 ] + lista_docx_caminhos, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
                 
-                # FASE 3: Compacta tudo para o ficheiro ZIP final (Apenas PDFs)
+                # FASE 3: Criação do ZIP
                 msg_status.info("🔄 Passo 3/3: A criar o pacote ZIP de download...")
                 memoria_zip = BytesIO()
                 
@@ -185,19 +187,17 @@ if nr_escolhida != "Clique para escolher..." and arquivo_excel is not None:
                         if os.path.exists(nome_pdf):
                             zip_file.write(nome_pdf, os.path.basename(nome_pdf))
                         else:
-                            # Caso extremo de falha, envia o DOCX com um aviso visual no nome
                             nome_falha = os.path.basename(nome_docx).replace(".docx", "_ERRO_CONVERSAO.docx")
                             zip_file.write(nome_docx, nome_falha)
                 
-                # Limpeza e encerramento
                 shutil.rmtree(pasta_temp, ignore_errors=True)
                 memoria_zip.seek(0)
                 
                 msg_status.empty() 
-                st.success("✨ Processamento Concluído! Todos os PDFs foram gerados com sucesso.")
+                st.success("✨ Processamento Concluído! Todos os PDFs foram gerados com as tags em negrito.")
                 
                 st.download_button(
-                    label="📥 Baixar Todos os Certificados em PDF (.ZIP)",
+                    label="📥 Descarregar Todos os Certificados em PDF (.ZIP)",
                     data=memoria_zip,
                     file_name=f"Certificados_PDF_{nr_escolhida.replace(' ', '_')}.zip",
                     mime="application/zip"
@@ -210,7 +210,7 @@ caminho_planilha_modelo = os.path.join("static", "modelo_dados.xlsx")
 if os.path.exists(caminho_planilha_modelo):
     with open(caminho_planilha_modelo, "rb") as f:
         st.download_button(
-            label="ℹ️ Baixar Planilha Modelo de Inserção",
+            label="ℹ️ Descarregar Planilha Modelo de Inserção",
             data=f,
             file_name="modelo_dados.xlsx",
             mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
