@@ -92,7 +92,7 @@ if not st.session_state["conectado"]:
     st.stop()
 
 # ==========================================================
-# PAINEL PRINCIPAL (SÓ APARECE APÓS LOGIN)
+# PAINEL PRINCIPAL
 # ==========================================================
 st.title("🎓 Gerador Web de Certificados NR (PDF)")
 
@@ -109,8 +109,6 @@ if nr_escolhida != "Clique para escolher..." and arquivo_excel is not None:
     if st.button("Processar e Gerar Certificados em PDF", type="primary"):
         try:
             df = pd.read_excel(arquivo_excel)
-            
-            # Limpa espaços em branco e deixa o cabeçalho em minúsculas para evitar erros de digitação
             df.columns = df.columns.str.strip().str.lower()
             
             caminho_modelo = os.path.join('modelos_docx', MODELOS[nr_escolhida])
@@ -118,68 +116,82 @@ if nr_escolhida != "Clique para escolher..." and arquivo_excel is not None:
             if not os.path.exists(caminho_modelo):
                 st.error(f"Erro: O modelo '{MODELOS[nr_escolhida]}' não foi encontrado na pasta 'modelos_docx'.")
             else:
-                memoria_zip = BytesIO()
+                msg_status = st.info("🔄 Passo 1/3: A processar dados e a preencher os modelos Word...")
                 barra_progresso = st.progress(0)
                 total_linhas = len(df)
                 
                 pasta_temp = "temp_certificados"
                 os.makedirs(pasta_temp, exist_ok=True)
                 
+                lista_arquivos_gerados = []
+                
+                # FASE 1: Gera todos os arquivos Word de uma vez na pasta temporária (Super rápido)
+                for idx, lambda_linha in df.iterrows():
+                    doc = Document(caminho_modelo)
+                    
+                    data_formatada = ""
+                    if pd.notna(lambda_linha.get("data_final")):
+                        data_formatada = str(lambda_linha["data_final"]).strip()
+                    else:
+                        data_formatada = "Data não preenchida"
+                    
+                    dados_com_negrito = {
+                        "[NOME]": str(lambda_linha.get("nome", "")).strip() if pd.notna(lambda_linha.get("nome")) else "",
+                        "[CPF]": str(lambda_linha.get("cpf", "")).strip() if pd.notna(lambda_linha.get("cpf")) else "",
+                        "[EMPRESA]": str(lambda_linha.get("empresa", "")).strip() if pd.notna(lambda_linha.get("empresa")) else "",
+                        "[CNPJ]": str(lambda_linha.get("cnpj", "")).strip() if pd.notna(lambda_linha.get("cnpj")) else "",
+                        "[PERIODO]": str(lambda_linha.get("periodo", "")).strip() if pd.notna(lambda_linha.get("periodo")) else ""
+                    }
+                    dados_sem_negrito = {"[DATA_FINAL]": data_formatada}
+                    todas_tags = {**dados_com_negrito, **dados_sem_negrito}
+                    
+                    processar_substituicao(doc, todas_tags)
+                                    
+                    nome_limpo = str(lambda_linha.get("nome", "aluno")).strip().replace(" ", "_")
+                    nr_nome = nr_escolhida.replace(' ', '_')
+                    
+                    nome_docx = os.path.join(pasta_temp, f"{nr_nome}_{nome_limpo}.docx")
+                    doc.save(nome_docx)
+                    
+                    # Guarda a correspondência do nome para verificar no fim
+                    nome_pdf_esperado = os.path.join(pasta_temp, f"{nr_nome}_{nome_limpo}.pdf")
+                    lista_arquivos_gerados.append((nome_docx, nome_pdf_esperado))
+                    
+                    barra_progresso.progress((idx + 1) / total_linhas)
+                
+                # FASE 2: Converte a pasta inteira numa única chamada de comando (O segredo da velocidade)
+                msg_status.info("🔄 Passo 2/3: A converter todos os certificados para PDF em lote (Alta Performance)...")
+                barra_progresso.empty()
+                
+                subprocess.run([
+                    'soffice', 
+                    '--headless', 
+                    '--invisible',
+                    '--nodefault',
+                    '--nofirststartwizard',
+                    '--convert-to', 'pdf:writer_pdf_Export', 
+                    '--outdir', pasta_temp, 
+                    os.path.join(pasta_temp, "*.docx")  # Converte TODOS os .docx de uma só vez
+                ], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+                
+                # FASE 3: Compacta tudo para o ficheiro ZIP final
+                msg_status.info("🔄 Passo 3/3: A criar o pacote ZIP de download...")
+                memoria_zip = BytesIO()
+                
                 with zipfile.ZipFile(memoria_zip, 'a', zipfile.ZIP_DEFLATED) as zip_file:
-                    for idx, lambda_linha in df.iterrows():
-                        doc = Document(caminho_modelo)
-                        
-                        # Como a sua data já está por extenso no Excel, puxamos o texto direto de forma limpa!
-                        data_formatada = ""
-                        if pd.notna(lambda_linha.get("data_final")):
-                            data_formatada = str(lambda_linha["data_final"]).strip()
-                        else:
-                            data_formatada = "Data não preenchida"
-                        
-                        # Mapeamento das tags sincronizado exatamente com as colunas da sua planilha
-                        dados_com_negrito = {
-                            "[NOME]": str(lambda_linha.get("nome", "")).strip() if pd.notna(lambda_linha.get("nome")) else "",
-                            "[CPF]": str(lambda_linha.get("cpf", "")).strip() if pd.notna(lambda_linha.get("cpf")) else "",
-                            "[EMPRESA]": str(lambda_linha.get("empresa", "")).strip() if pd.notna(lambda_linha.get("empresa")) else "",
-                            "[CNPJ]": str(lambda_linha.get("cnpj", "")).strip() if pd.notna(lambda_linha.get("cnpj")) else "",
-                            "[PERIODO]": str(lambda_linha.get("periodo", "")).strip() if pd.notna(lambda_linha.get("periodo")) else ""
-                        }
-                        dados_sem_negrito = {"[DATA_FINAL]": data_formatada}
-                        todas_tags = {**dados_com_negrito, **dados_sem_negrito}
-                        
-                        # Executa a substituição avançada mantendo o formato original
-                        processar_substituicao(doc, todas_tags)
-                                        
-                        nome_limpo = str(lambda_linha.get("nome", "aluno")).strip().replace(" ", "_")
-                        nr_nome = nr_escolhida.replace(' ', '_')
-                        
-                        nome_docx = os.path.join(pasta_temp, f"{nr_nome}_{nome_limpo}.docx")
-                        nome_pdf = os.path.join(pasta_temp, f"{nr_nome}_{nome_limpo}.pdf")
-                        
-                        doc.save(nome_docx)
-                        
-                        # Comando de conversão Pixel Perfect pelo LibreOffice do servidor
-                        subprocess.run([
-                            'soffice', 
-                            '--headless', 
-                            '--invisible',
-                            '--nodefault',
-                            '--nofirststartwizard',
-                            '--convert-to', 'pdf:writer_pdf_Export', 
-                            '--outdir', pasta_temp, 
-                            nome_docx
-                        ], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-                        
+                    for nome_docx, nome_pdf in lista_arquivos_gerados:
+                        # Se a conversão em PDF funcionou, insere o PDF; se falhou, manda o DOCX de backup
                         if os.path.exists(nome_pdf):
                             zip_file.write(nome_pdf, os.path.basename(nome_pdf))
                         else:
                             zip_file.write(nome_docx, os.path.basename(nome_docx))
-                        
-                        barra_progresso.progress((idx + 1) / total_linhas)
                 
+                # Limpeza e encerramento
                 shutil.rmtree(pasta_temp, ignore_errors=True)
                 memoria_zip.seek(0)
-                st.success("✨ Todos os certificados foram convertidos e gerados em PDF!")
+                
+                msg_status.empty() # Limpa as mensagens de carregamento
+                st.success("✨ Processamento Concluído com Alta Performance! Todos os PDFs estão prontos.")
                 
                 st.download_button(
                     label="📥 Descarregar Todos os Certificados em PDF (.ZIP)",
