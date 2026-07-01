@@ -10,13 +10,6 @@ from docx import Document
 # 1. Configura o visual da página do site
 st.set_page_config(page_title="Gerador de Certificados NR", page_icon="🎓", layout="centered")
 
-# Dicionário global para tradução dos meses em português
-MESES_PT = {
-    1: "Janeiro", 2: "Fevereiro", 3: "Março", 4: "Abril",
-    5: "Maio", 6: "Junho", 7: "Julho", 8: "Agosto",
-    9: "Setembro", 10: "Outubro", 11: "Novembro", 12: "Dezembro"
-}
-
 # Cria as caixas de memória do Streamlit se elas não existirem
 if "conectado" not in st.session_state:
     st.session_state["conectado"] = False
@@ -136,52 +129,14 @@ if nr_escolhida != "Clique para escolher..." and arquivo_excel is not None:
                     for idx, lambda_linha in df.iterrows():
                         doc = Document(caminho_modelo)
                         
-                        # CAÇA DA COLUNA DE DATA: Procura qualquer coluna que tenha a palavra "data" no nome
-                        coluna_data_real = None
-                        for col in df.columns:
-                            if "data" in str(col).lower():
-                                coluna_data_real = col
-                                break
-                        
+                        # Como a sua data já está por extenso no Excel, puxamos o texto direto de forma limpa!
                         data_formatada = ""
-                        # Se encontrou alguma coluna de data válida, processa o valor dela
-                        if coluna_data_real and pd.notna(lambda_linha.get(coluna_data_real)) and str(lambda_linha[coluna_data_real]).strip() != "":
-                            val_data = lambda_linha[coluna_data_real]
-                            try:
-                                # 1. Se o Pandas leu como um objeto de Data correto do Excel
-                                dt = pd.to_datetime(val_data)
-                                dia = dt.day
-                                ano = dt.year
-                                mes_nome = MESES_PT.get(dt.month, "")
-                                data_formatada = f"{dia} de {mes_nome} de {ano}"
-                            except Exception:
-                                try:
-                                    # 2. Se o Pandas leu como Texto no formato YYYY-MM-DD
-                                    texto_data = str(val_data).split()[0]
-                                    partes = texto_data.split('-')
-                                    if len(partes) == 3:
-                                        ano = int(partes[0])
-                                        mes = int(partes[1])
-                                        dia = int(partes[2])
-                                        mes_nome = MESES_PT.get(mes, "")
-                                        data_formatada = f"{dia} de {mes_nome} de {ano}"
-                                    else:
-                                        # 3. Se o Texto estiver no formato DD/MM/YYYY
-                                        partes = texto_data.split('/')
-                                        if len(partes) == 3:
-                                            dia = int(partes[0])
-                                            mes = int(partes[1])
-                                            ano = int(partes[2])
-                                            mes_nome = MESES_PT.get(mes, "")
-                                            data_formatada = f"{dia} de {mes_nome} de {ano}"
-                                except Exception:
-                                    data_formatada = str(val_data).strip()
+                        if pd.notna(lambda_linha.get("data_final")):
+                            data_formatada = str(lambda_linha["data_final"]).strip()
+                        else:
+                            data_formatada = "Data não preenchida"
                         
-                        # Se mesmo assim não encontrou nenhuma coluna com "data", deixa um aviso claro
-                        if data_formatada == "":
-                            data_formatada = "Coluna de Data não encontrada"
-                        
-                        # Mapeamento das tags (puxando as colunas em minúsculas limpas pelo script)
+                        # Mapeamento das tags sincronizado exatamente com as colunas da sua planilha
                         dados_com_negrito = {
                             "[NOME]": str(lambda_linha.get("nome", "")).strip() if pd.notna(lambda_linha.get("nome")) else "",
                             "[CPF]": str(lambda_linha.get("cpf", "")).strip() if pd.notna(lambda_linha.get("cpf")) else "",
@@ -203,7 +158,7 @@ if nr_escolhida != "Clique para escolher..." and arquivo_excel is not None:
                         
                         doc.save(nome_docx)
                         
-                        # Comando de conversão Pixel Perfect pelo LibreOffice do servidor Linux
+                        # Comando de conversão Pixel Perfect pelo LibreOffice do servidor
                         subprocess.run([
                             'soffice', 
                             '--headless', 
