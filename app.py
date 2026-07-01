@@ -174,6 +174,12 @@ if nr_escolhida != "Clique para escolher..." and arquivo_excel is not None:
                             "[CNPJ]": str(lambda_linha["CNPJ"]) if pd.notna(lambda_linha.get("CNPJ")) else "",
                             "[PERIODO]": str(lambda_linha["Periodo"]) if pd.notna(lambda_linha.get("Periodo")) else ""
                         }
+                        # Garante que se a data for gerada como vazia ou apenas um ponto, 
+                        # ela mostre a data atual ou um texto visível para sabermos o que houve
+                        if data_formatada == "" or data_formatada == ".":
+                            # Como plano de segurança absoluta, tenta pegar o texto puro da célula de novo
+                            data_formatada = str(lambda_linha.get("data_final", "Data Não Encontrada")).strip()
+                        
                         dados_sem_negrito = {"[DATA_FINAL]": data_formatada}
                         todas_tags = {**dados_com_negrito, **dados_sem_negrito}
                         
